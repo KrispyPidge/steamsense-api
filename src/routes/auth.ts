@@ -6,10 +6,17 @@ import { signToken } from '../utils/jwt';
 export async function authRoutes(app: FastifyInstance) {
   const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3000';
 
-  app.get('/auth/steam', async (_request: FastifyRequest, reply: FastifyReply) => {
-    const returnUrl = `${BACKEND_URL}/auth/steam/callback`;
-    const realm = BACKEND_URL;
-    const loginUrl = buildSteamLoginUrl(returnUrl, realm);
+  app.get('/auth/steam', async (request: FastifyRequest, reply: FastifyReply) => {
+    const query = request.query as Record<string, string>;
+    const redirectUri = query.redirect_uri || '';
+
+    // Pass redirect_uri through the Steam roundtrip via our callback URL
+    const callbackUrl = new URL(`${BACKEND_URL}/auth/steam/callback`);
+    if (redirectUri) {
+      callbackUrl.searchParams.set('redirect_uri', redirectUri);
+    }
+
+    const loginUrl = buildSteamLoginUrl(callbackUrl.toString(), BACKEND_URL);
     return reply.redirect(loginUrl);
   });
 
@@ -41,15 +48,24 @@ export async function authRoutes(app: FastifyInstance) {
     // Generate JWT
     const token = signToken({ userId: user.id, steamId: user.steam_id });
 
-    return {
-      token,
-      user: {
-        id: user.id,
-        steam_id: user.steam_id,
-        display_name: user.display_name,
-        avatar_url: user.avatar_url,
-      },
+    const userPayload = {
+      id: user.id,
+      steam_id: user.steam_id,
+      display_name: user.display_name,
+      avatar_url: user.avatar_url,
     };
+
+    // If redirect_uri was passed (mobile app flow), redirect back to the app with token
+    const redirectUri = query.redirect_uri;
+    if (redirectUri) {
+      const appUrl = new URL(redirectUri);
+      appUrl.searchParams.set('token', token);
+      appUrl.searchParams.set('user', JSON.stringify(userPayload));
+      return reply.redirect(appUrl.toString());
+    }
+
+    // Browser flow: return JSON
+    return { token, user: userPayload };
   });
 
   app.post('/auth/logout', async () => {
