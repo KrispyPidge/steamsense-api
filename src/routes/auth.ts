@@ -63,11 +63,18 @@ export async function authRoutes(app: FastifyInstance) {
         avatar_url: user.avatar_url,
       };
 
-      // If redirect_uri was passed (mobile app flow), redirect back to the app with token
+      // If redirect_uri was passed (mobile app flow), return HTML that deep-links back to the app
       const redirectUri = query.redirect_uri;
       if (redirectUri) {
         const appUrl = `${redirectUri}?token=${encodeURIComponent(token)}&user=${encodeURIComponent(JSON.stringify(userPayload))}`;
-        return reply.redirect(appUrl);
+        reply.type('text/html');
+        return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Redirecting...</title></head>
+<body style="background:#1a1a2e;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column">
+<p>Signed in! Returning to SteamSense...</p>
+<script>window.location.href="${appUrl}";</script>
+<noscript><a href="${appUrl}" style="color:#e94560">Tap here to return to SteamSense</a></noscript>
+</body></html>`;
       }
 
       // Browser flow: return JSON
